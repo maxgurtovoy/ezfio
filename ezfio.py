@@ -133,7 +133,7 @@ def CheckAIOLimits():
 
 def ParseArgs():
     """Parse command line options into globals."""
-    global physDrive, utilization, outputDest, yes
+    global physDrive, utilization, outputDest, yes, maxBs, shorttime, longtime
     parser = argparse.ArgumentParser(
                  formatter_class=argparse.RawDescriptionHelpFormatter,
     description="A tool to easily run FIO to benchmark sustained " \
@@ -156,12 +156,34 @@ WARNING: All data on the target device will be DESTROYED by this test.""")
     parser.add_argument("--yes", dest="yes", action='store_true',
         help="Skip the final warning prompt (for scripted tests)",
         required=False)
+    parser.add_argument("--max_bs", "-b", dest="maxBs",
+        help="Maximal IO size used for the benchmark (in Bytes)", required=False)
+    parser.add_argument("--shorttime", "-s", dest="shorttime",
+        help="Runtime of point tests (in seconds)", required=False)
+    parser.add_argument("--longtime", "-l", dest="longtime",
+        help="Runtime of long-running tests (in seconds)", required=False)
+
     args = parser.parse_args()
 
     physDrive = args.physDrive
     utilization = args.utilization
     outputDest = args.outputDest
+    if args.maxBs:
+        maxBs = int(args.maxBs)
+    if args.shorttime:
+        shorttime = int(args.shorttime)
+    if args.longtime:
+        longtime = int(args.longtime)
     yes = args.yes
+    if maxBs and maxBs < 512:
+        print "WARNING: Maximal IO size should be greater than 512B, setting it to 4KB"
+        maxBs = 4096
+    if shorttime and shorttime < 10:
+        print "WARNING: Minimal runtime for point test should be >= 10 seconds, setting it to 10 seconds"
+        shorttime = 10
+    if longtime and longtime < 20:
+        print "WARNING: Minimal runtime for long-running test should be >= 20 seconds, setting it to 20 seconds"
+        shorttime = 10
     if (utilization < 1) or (utilization > 100):
         print "ERROR:  Utilization must be between 1...100"
         parser.print_help()
@@ -361,7 +383,7 @@ def SequentialConditioning():
     """Sequentially fill the complete capacity of the drive once."""
     # Note that we can't use regular test runner because this test needs
     # to run for a specified # of bytes, not a specified # of seconds.
-    cmdline = [fio, "--name=SeqCond", "--readwrite=write", "--bs=128k", 
+    cmdline = [fio, "--name=SeqCond", "--readwrite=write", "--bs=" + str(maxBs),
                "--ioengine=libaio", "--iodepth=64", "--direct=1", 
                "--filename=" + physDrive, "--size=" + str(testcapacity) + "G",
                "--thread"]
@@ -375,7 +397,7 @@ def RandomConditioning():
     """Randomly write entire device for the full capacity"""
     # Note that we can't use regular test runner because this test needs
     # to run for a specified # of bytes, not a specified # of seconds.
-    cmdline = [fio, "--name=RandCond", "--readwrite=randwrite", "--bs=4k",
+    cmdline = [fio, "--name=RandCond", "--readwrite=randwrite", "--bs=" + str(min(4096, maxBs)),
                "--invalidate=1", "--end_fsync=0", "--group_reporting",
                "--direct=1", "--filename=" + str(physDrive),
                "--size=" + str(testcapacity) + "G", "--ioengine=libaio",
@@ -560,11 +582,13 @@ def DefineTests():
     """Generate the work list for the main worker into OC."""
     global oc
     # What we're shmoo-ing across
-    bslist = (512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072)
+    bslist = []
+    minBs = 512
+    while minBs <= maxBs:
+        bslist.append(minBs)
+        minBs *= 2
     qdlist = (1, 2, 4, 8, 16, 32, 64, 128, 256)
     threadslist = (1, 2, 4, 8, 16, 32, 64, 128, 256)
-    shorttime = 120 # Runtime of point tests
-    longtime = 1200 # Runtime of long-running tests
 
     def AddTest( name, seqrand, writepct, blocksize, threads, qdperthread,
                  iops_log, runtime, desc, cmdline ):
@@ -1008,6 +1032,9 @@ fioOutputFormat = "json" # Can we make exceedance charts using JSON+ output?
 physDrive = ""    # Device path to test
 utilization = ""  # Device utilization % 1..100
 yes = False       # Skip user verification
+maxBs = 131072    # Maximal IO size for the test
+shorttime = 120   # Runtime of point tests
+longtime = 1200   # Runtime of long-running tests
 
 cpu = ""         # CPU model
 cpuCores = ""    # # of cores (including virtual)
