@@ -133,7 +133,7 @@ def CheckAIOLimits():
 
 def ParseArgs():
     """Parse command line options into globals."""
-    global physDrive, utilization, outputDest, yes, maxBs, shorttime, longtime
+    global physDrive, utilization, outputDest, yes, maxBs, minimalBs, shorttime, longtime
     parser = argparse.ArgumentParser(
                  formatter_class=argparse.RawDescriptionHelpFormatter,
     description="A tool to easily run FIO to benchmark sustained " \
@@ -158,6 +158,8 @@ WARNING: All data on the target device will be DESTROYED by this test.""")
         required=False)
     parser.add_argument("--max_bs", "-b", dest="maxBs",
         help="Maximal IO size used for the benchmark (in Bytes)", required=False)
+    parser.add_argument("--min_bs", "-n", dest="minimalBs",
+        help="Minimal IO size used for the benchmark (in Bytes)", required=False)
     parser.add_argument("--shorttime", "-s", dest="shorttime",
         help="Runtime of point tests (in seconds)", required=False)
     parser.add_argument("--longtime", "-l", dest="longtime",
@@ -170,6 +172,8 @@ WARNING: All data on the target device will be DESTROYED by this test.""")
     outputDest = args.outputDest
     if args.maxBs:
         maxBs = int(args.maxBs)
+    if args.minimalBs:
+        minimalBs = min(maxBs, int(args.minimalBs))
     if args.shorttime:
         shorttime = int(args.shorttime)
     if args.longtime:
@@ -178,6 +182,9 @@ WARNING: All data on the target device will be DESTROYED by this test.""")
     if maxBs and maxBs < 512:
         print "WARNING: Maximal IO size should be greater than 512B, setting it to 4KB"
         maxBs = 4096
+    if minimalBs and minimalBs < 512:
+        print "WARNING: Minimal IO size should be greater than 512B, setting it to 512B"
+        minimalBs = 512
     if shorttime and shorttime < 10:
         print "WARNING: Minimal runtime for point test should be >= 10 seconds, setting it to 10 seconds"
         shorttime = 10
@@ -583,7 +590,7 @@ def DefineTests():
     global oc
     # What we're shmoo-ing across
     bslist = []
-    minBs = 512
+    minBs = minimalBs
     while minBs <= maxBs:
         bslist.append(minBs)
         minBs *= 2
@@ -1033,6 +1040,7 @@ physDrive = ""    # Device path to test
 utilization = ""  # Device utilization % 1..100
 yes = False       # Skip user verification
 maxBs = 131072    # Maximal IO size for the test
+minimalBs = 512   # Minimal IO size for the test
 shorttime = 120   # Runtime of point tests
 longtime = 1200   # Runtime of long-running tests
 
